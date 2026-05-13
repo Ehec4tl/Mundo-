@@ -1,6 +1,7 @@
 """
 interaction_resolver.py - Orquestación de interacciones entre grupos.
 MÓDULO 15C: Integra Amigos distantes (Mediano Peloso).
+BUGFIX #002: Implementada actualización de reputación en combates (R17)
 """
 
 import random
@@ -21,12 +22,105 @@ from rules import (
 from combat_resolver import resolve_combat, resolve_stack_combat, apply_rebound
 
 
+def _update_reputation_after_hostile_interaction(
+    group_a: Group, group_b: Group, 
+    logger: Logger, round_number: int, turn_index: int
+) -> None:
+    """
+    BUGFIX #002: Actualiza reputación después de una interacción hostil.
+    Manual R17.4: "Interacción hostil: -1"
+    
+    Args:
+        group_a: Primer grupo
+        group_b: Segundo grupo
+        logger: Logger para registrar cambios
+        round_number: Ronda actual
+        turn_index: Índice de turno
+    """
+    # Obtener reputaciones actuales
+    rep_a_to_b = get_reputation(group_a, group_b.id)
+    rep_b_to_a = get_reputation(group_b, group_a.id)
+    
+    # Aplicar cambio por interacción hostil: -1
+    new_rep_a_to_b = max(1, rep_a_to_b - 1)  # Mínimo 1 (Enemigos)
+    new_rep_b_to_a = max(1, rep_b_to_a - 1)  # Mínimo 1 (Enemigos)
+    
+    # Actualizar reputaciones
+    group_a.reputacion[group_b.id] = new_rep_a_to_b
+    group_b.reputacion[group_a.id] = new_rep_b_to_a
+    
+    # Loguear cambios
+    logger.log_event(
+        round_num=round_number,
+        turn_index=turn_index,
+        group_id=group_a.id,
+        event_type="REPUTATION_CHANGED",
+        details={
+            "group_id_a": group_a.id,
+            "group_id_b": group_b.id,
+            "interaction_type": "HOSTILE",
+            "old_reputation_a_to_b": rep_a_to_b,
+            "new_reputation_a_to_b": new_rep_a_to_b,
+            "old_reputation_b_to_a": rep_b_to_a,
+            "new_reputation_b_to_a": new_rep_b_to_a,
+            "change": -1
+        }
+    )
+
+
+def _update_reputation_after_peaceful_interaction(
+    group_a: Group, group_b: Group, 
+    logger: Logger, round_number: int, turn_index: int
+) -> None:
+    """
+    BUGFIX #002: Actualiza reputación después de una interacción pacífica.
+    Manual R17.3: "Interacción pacífica: +1"
+    
+    Args:
+        group_a: Primer grupo
+        group_b: Segundo grupo
+        logger: Logger para registrar cambios
+        round_number: Ronda actual
+        turn_index: Índice de turno
+    """
+    # Obtener reputaciones actuales
+    rep_a_to_b = get_reputation(group_a, group_b.id)
+    rep_b_to_a = get_reputation(group_b, group_a.id)
+    
+    # Aplicar cambio por interacción pacífica: +1
+    new_rep_a_to_b = min(7, rep_a_to_b + 1)  # Máximo 7 (Amigos)
+    new_rep_b_to_a = min(7, rep_b_to_a + 1)  # Máximo 7 (Amigos)
+    
+    # Actualizar reputaciones
+    group_a.reputacion[group_b.id] = new_rep_a_to_b
+    group_b.reputacion[group_a.id] = new_rep_b_to_a
+    
+    # Loguear cambios
+    logger.log_event(
+        round_num=round_number,
+        turn_index=turn_index,
+        group_id=group_a.id,
+        event_type="REPUTATION_CHANGED",
+        details={
+            "group_id_a": group_a.id,
+            "group_id_b": group_b.id,
+            "interaction_type": "PEACEFUL",
+            "old_reputation_a_to_b": rep_a_to_b,
+            "new_reputation_a_to_b": new_rep_a_to_b,
+            "old_reputation_b_to_a": rep_b_to_a,
+            "new_reputation_b_to_a": new_rep_b_to_a,
+            "change": +1
+        }
+    )
+
+
 def resolve_tile_interactions(world: World, x: int, y: int,
                               rng: random.Random, logger: Logger,
                               round_number: int, turn_index: int) -> None:
     """
     Resuelve todas las interacciones en una casilla según Regla 13.
     MÓDULO 15C: Integra Amigos distantes.
+    BUGFIX #002: Ahora actualiza reputación después de interacciones (R17)
     """
     groups = world.get_groups_on_tile(x, y)
     
@@ -78,6 +172,15 @@ def resolve_tile_interactions(world: World, x: int, y: int,
                     winner_stack, loser_stack = resolve_stack_combat(
                         stack_i, stack_j, world, rng, logger, round_number, turn_index
                     )
+                    
+                    # BUGFIX #002: Actualizar reputación después del combate hostil
+                    # Reducir reputación entre los stacks (cada grupo vs cada grupo)
+                    if winner_stack and loser_stack:
+                        for winner in winner_stack:
+                            for loser in loser_stack:
+                                _update_reputation_after_hostile_interaction(
+                                    winner, loser, logger, round_number, turn_index
+                                )
                     
                     # Actualizar stacks activos
                     active_stacks = [s for s in active_stacks if any(g.poblacion > 0 for g in s)]
@@ -157,6 +260,15 @@ def resolve_tile_interactions(world: World, x: int, y: int,
                                 target_group.poblacion += group.poblacion
                                 target_group.poder_promedio = new_power
                                 world.remove_group(group.id)
+                        
+                        # BUGFIX #002: Actualizar reputación después de merge pacífico
+                        # Aumentar reputación entre los stacks (solo una vez por merge)
+                        for group_a in stack_i:
+                            for group_b in stack_j:
+                                if group_a.id != group_b.id:
+                                    _update_reputation_after_peaceful_interaction(
+                                        group_a, group_b, logger, round_number, turn_index
+                                    )
                         
                         active_stacks = [s for s in active_stacks if s != stack_j]
                         i = 0
