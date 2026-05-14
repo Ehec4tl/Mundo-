@@ -1,14 +1,13 @@
 @@
-     # ========================================================================
-     # Acción CONSTRUIR
-     # ========================================================================
-     if action.startswith("BUILD_"):
-         from rules import (
-             build_empalizada, build_bastion, build_puente, build_city_fortaleza,
-             BuildResult, can_build_empalizada, can_build_bastion, can_build_puente
-         )
-+        # Bloquear si el grupo está AGOTADO (R8.4 y R25.4)
-+        if StateType.AGOTADO in group.estados:
+ def execute_action(group: Group, action: str, world: World, rng: random.Random,
+                    logger: Logger, round_number: int, turn_index: int) -> None:
+@@
+-    from models import StateType
++    from models import StateType
++
++    # Bloquear todas las acciones diferentes a movimiento si está En Marcha (R9.8)
++    if StateType.EN_MARCHA in group.estados:
++        if not action.startswith("MOVE_"):
 +            logger.log_event(
 +                round_num=round_number,
 +                turn_index=turn_index,
@@ -16,59 +15,10 @@
 +                event_type="ACTION_BLOCKED_BY_STATE",
 +                details={
 +                    "action": action,
-+                    "state": "Agotado",
-+                    "reason": "exhausted_state_active"
++                    "state": "En Marcha",
++                    "reason": "only_movement_allowed_when_on_march"
 +                }
 +            )
 +            group.last_action_was_grow = False
 +            return
 @@
--        # Aplicar resultado
--        if result.success and result.structure:
--            world.add_structure(result.structure)
--            
--            if result.converted_tile:
--                x, y, _ = result.converted_tile
--                world.convert_water_to_land(x, y)
--            
--            if result.settlement_updates:
--                for sid, settlement in result.settlement_updates.items():
--                    world.update_settlement(settlement)
--        
--        logger.log_event(
--            round_num=round_number,
--            turn_index=turn_index,
--            group_id=group.id,
--            event_type="BUILD_FAILED",
--            details={"action": action, "reason": "not_implemented_yet"}
--        )
-+        # Aplicar resultado
-+        if result and result.success:
-+            if result.structure:
-+                world.add_structure(result.structure)
-+            
-+            if result.converted_tile:
-+                x, y, _ = result.converted_tile
-+                world.convert_water_to_land(x, y)
-+            
-+            if result.settlement_updates:
-+                for sid, settlement in result.settlement_updates.items():
-+                    world.update_settlement(settlement)
-+
-+            logger.log_event(
-+                round_num=round_number,
-+                turn_index=turn_index,
-+                group_id=group.id,
-+                event_type="BUILD_SUCCESS",
-+                details={"action": action, "result": "success"}
-+            )
-+        else:
-+            logger.log_event(
-+                round_num=round_number,
-+                turn_index=turn_index,
-+                group_id=group.id,
-+                event_type="BUILD_FAILED",
-+                details={"action": action, "reason": getattr(result, 'details', 'unknown')}
-+            )
-         group.last_action_was_grow = False
-         return
