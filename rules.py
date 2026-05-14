@@ -1,96 +1,30 @@
 @@
- from typing import List, Tuple, Dict, Any, Optional
-@@
- class BuildResult:
-@@
- def can_build_empalizada(group: 'Group', world: 'World') -> Tuple[bool, str]:
-@@
--    tile = world.get_tile(group.x, group.y)
--    
--    if not tile:
--        return False, "invalid_tile"
--    
--    if tile.has_structure:
--        return False, "tile_already_has_structure"
--    
--    if tile.has_settlement:
--        # Actualmente no permitimos construir sobre ciudad sin reglas adicionales
--        return False, "cannot_build_on_city"
--    
--    return True, ""
-+    tile = world.get_tile(group.x, group.y)
-+
-+    if not tile:
-+        return False, "invalid_tile"
-+
-+    if tile.has_structure:
-+        return False, "tile_already_has_structure"
-+
-+    # Si hay ciudad en la casilla, aplicar límite: nivel * 2 (radius=1)
-+    if tile.has_settlement:
-+        settlement = world.get_settlement(tile.settlement_id)
-+        if settlement and not settlement.ruinas:
-+            max_structures = settlement.nivel * 2
-+            current = _count_structures_near_settlement(settlement, world, radius=1)
-+            if current >= max_structures:
-+                return False, "max_structures_reached_for_city"
-+            return False, "cannot_build_on_city"
-+
-+    return True, ""
-@@
- def can_build_bastion(group: 'Group', world: 'World') -> Tuple[bool, str]:
-@@
--    tile = world.get_tile(group.x, group.y)
--    if not tile:
--        return False, "invalid_tile"
--    if tile.has_structure:
--        return False, "tile_already_has_structure"
--    if tile.has_settlement:
--        return False, "cannot_build_on_city"
--    return True, ""
-+    tile = world.get_tile(group.x, group.y)
-+    if not tile:
-+        return False, "invalid_tile"
-+    if tile.has_structure:
-+        return False, "tile_already_has_structure"
-+    if tile.has_settlement:
-+        settlement = world.get_settlement(tile.settlement_id)
-+        if settlement and not settlement.ruinas:
-+            max_structures = settlement.nivel * 2
-+            current = _count_structures_near_settlement(settlement, world, radius=1)
-+            if current >= max_structures:
-+                return False, "max_structures_reached_for_city"
-+            return False, "cannot_build_on_city"
-+    return True, ""
+-from typing import List, Tuple, Dict, Any, Optional
++from typing import List, Tuple, Dict, Any, Optional
 @@
  def can_build_puente(group: 'Group', world: 'World', direction: str) -> Tuple[bool, str]:
 @@
--    target_tile = world.get_tile(tx, ty)
--    if not target_tile:
--        return False, "invalid_target"
--    if target_tile.has_structure:
--        return False, "target_has_structure"
--    if target_tile.terreno != TerrainType.AGUA:
--        return False, "target_not_water"
--    return True, ""
-+    target_tile = world.get_tile(tx, ty)
-+    if not target_tile:
-+        return False, "invalid_target"
-+    if target_tile.has_structure:
-+        return False, "target_has_structure"
-+    if target_tile.terreno != TerrainType.AGUA:
-+        return False, "target_not_water"
-+
-+    if target_tile.has_settlement:
-+        settlement = world.get_settlement(target_tile.settlement_id)
-+        if settlement and not settlement.ruinas:
-+            max_structures = settlement.nivel * 2
-+            current = _count_structures_near_settlement(settlement, world, radius=1)
-+            if current >= max_structures:
-+                return False, "max_structures_reached_for_city"
-+            return False, "cannot_build_on_city"
-+
-+    return True, ""
+-    return True, "", (bridge_x, bridge_y)
++    return True, "", (bridge_x, bridge_y)
+@@
+ def build_puente(group: 'Group', world: 'World', direction: str,
+                 round_number: int, rng: random.Random) -> BuildResult:
+@@
+     return BuildResult(
+         success=True,
+         event_type="BUILD_SUCCESS",
+         details={
+             "group_id": group.id,
+             "structure_type": "PUENTE",
+             "position": (group.x, group.y),
+             "bridge_position": (bridge_x, bridge_y),
+             "direction": direction,
+             "blocks_movement": False
+         },
+         structure=structure,
+-        converted_tile=(bridge_x, bridge_y, None)
++        converted_tile=(bridge_x, bridge_y, None)
+     )
 +
 +
 +def _count_structures_near_settlement(settlement: 'Settlement', world: 'World', radius: int = 1) -> int:
